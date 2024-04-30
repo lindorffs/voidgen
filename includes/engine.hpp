@@ -3,12 +3,19 @@
 #define ENGINE_H_
 // end define gaurd
 
+#include <SDL2/SDL.h>
+
 #define TARGET_FPS 60 // How many frames per second are *desired*.
 #define TARGET_TPS 30 // How many update ticks per second are *desired*.
 
 class engine {
+private:
+	SDL_Window *window = NULL;
+	SDL_Renderer *renderer = NULL;
+	Uint32 last_render = 0; // in ms
+	Uint32 last_update = 0; // in ms
 public:
-	int current_tick = 1;
+	Uint32 current_tick = 0; // the time since the engine began in ms
 
 	bool initialized = false;
 	bool running = false;
