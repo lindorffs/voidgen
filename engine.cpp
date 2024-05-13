@@ -1,3 +1,9 @@
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#include <emscripten/html5.h>
+#define PLATFORM_WEB
+#endif
+
 #include <engine.hpp>
 #include <stdio.h>
 #include <string.h>
@@ -43,7 +49,32 @@ int lua_render_texture(lua_State *lua_instance) {
 	
 	return 0;
 }
+int lua_render_subtexture(lua_State *lua_instance) {
+	const char *id = lua_tolstring(lua_instance, 1, NULL);
+	int x = lua_tonumber(lua_instance, 2);
+	int y = lua_tonumber(lua_instance, 3);
+	double sx = lua_tonumber(lua_instance, 4);
+	double sy = lua_tonumber(lua_instance, 5);
+	bool centered = lua_toboolean(lua_instance, 6);
+	double r = lua_tonumber(lua_instance, 7);
+	
+	gEngine->render_subtexture(id, x, y, sx, sy, centered, r);
+	
+	return 0;
+}
 
+int lua_create_sub_texture(lua_State *lua_instance) {
+	const char *id = lua_tolstring(lua_instance, 1, NULL);
+	const char *src = lua_tolstring(lua_instance, 2, NULL);
+	int x = lua_tonumber(lua_instance, 3);
+	int y = lua_tonumber(lua_instance, 4);
+	int w = lua_tonumber(lua_instance, 5);
+	int h = lua_tonumber(lua_instance, 6);
+	
+	gEngine->create_subtexture(id, src, x, y, w, h);
+	
+	return 0;
+}
 int lua_render_rectangle(lua_State *lua_instance) {
 	int x = lua_tonumber(lua_instance, 1);
 	int y = lua_tonumber(lua_instance, 2);
@@ -143,6 +174,60 @@ int lua_get_mouse_position(lua_State *lua_instance) {
 	return 2;
 }
 
+int lua_get_key_down(lua_State *lua_instance) {
+	SDL_Keycode check;
+	const char *key = lua_tolstring(lua_instance, 1, NULL);
+	check = SDL_GetKeyFromName(key);
+	
+	lua_pushboolean(lua_instance, gEngine->key_states.down[SDL_GetScancodeFromKey(check)]);
+	
+	return 1;
+}
+int lua_get_key_pressed(lua_State *lua_instance) {
+	SDL_Keycode check;
+	const char *key = lua_tolstring(lua_instance, 1, NULL);
+	check = SDL_GetKeyFromName(key);
+	
+	lua_pushboolean(lua_instance, gEngine->key_states.pressed[SDL_GetScancodeFromKey(check)]);
+	
+	return 1;
+}
+int lua_get_key_released(lua_State *lua_instance) {
+	SDL_Keycode check;
+	const char *key = lua_tolstring(lua_instance, 1, NULL);
+	check = SDL_GetKeyFromName(key);
+	
+	lua_pushboolean(lua_instance, gEngine->key_states.released[SDL_GetScancodeFromKey(check)]);
+	
+	return 1;
+}
+int lua_get_mouse_pressed(lua_State *lua_instance) {
+	const char *button = lua_tolstring(lua_instance, 1, NULL);
+	
+	if (strcmp(button, "left") == 0) {
+		lua_pushboolean(lua_instance, gEngine->mouse_states.pressed[SDL_BUTTON(SDL_BUTTON_LEFT)]);
+	} else if (strcmp(button, "right") == 0) {
+		lua_pushboolean(lua_instance, gEngine->mouse_states.pressed[SDL_BUTTON(SDL_BUTTON_RIGHT)]);
+	} else if (strcmp(button, "middle") == 0) {
+		lua_pushboolean(lua_instance, gEngine->mouse_states.pressed[SDL_BUTTON(SDL_BUTTON_MIDDLE)]);
+	}
+	
+	return 1;
+}
+int lua_get_mouse_released(lua_State *lua_instance) {
+	const char *button = lua_tolstring(lua_instance, 1, NULL);
+	
+	if (strcmp(button, "left") == 0) {
+		lua_pushboolean(lua_instance, gEngine->mouse_states.released[SDL_BUTTON(SDL_BUTTON_LEFT)]);
+	} else if (strcmp(button, "right") == 0) {
+		lua_pushboolean(lua_instance, gEngine->mouse_states.released[SDL_BUTTON(SDL_BUTTON_RIGHT)]);
+	} else if (strcmp(button, "middle") == 0) {
+		lua_pushboolean(lua_instance, gEngine->mouse_states.released[SDL_BUTTON(SDL_BUTTON_MIDDLE)]);
+	}
+	
+	return 1;
+}
+
 int lua_stop(lua_State *lua_instance) {
 	
 	gEngine->stop();
@@ -156,6 +241,16 @@ int lua_get_ticks(lua_State *lua_instance) {
 	return 1;
 }
 
+int lua_enable_cursor(lua_State *lua_instance) {
+	SDL_ShowCursor(SDL_ENABLE);
+	
+	return 0;
+}
+int lua_disable_cursor(lua_State *lua_instance) {
+	SDL_ShowCursor(SDL_DISABLE);
+	
+	return 0;
+}
 
 int main(int argc, char *argv[]) {
 	engine Engine = engine();
@@ -174,6 +269,9 @@ engine::engine() {
 	for (int i = 0; i < MAX_TEXTURES; i++) {
 		this->Textures[i] = NULL;
 	}
+	for (int i = 0; i < MAX_SUBTEXTURES; i++) {
+		this->Subtextures[i] = NULL;
+	}
 	for (int i = 0; i < MAX_FONTS; i++) {
 		this->Fonts[i] = NULL;
 	}
@@ -181,27 +279,48 @@ engine::engine() {
 
 int engine::loop_function() {
 	// Handle the engine loop function
-	while (this->running) {
-		this->current_tick = SDL_GetTicks();
-		this->update_function();
-		this->render_function();
-	}
-	printf("engine.cpp: engine stopped.\n");
+	
+	#ifndef __EMSCRIPTEN__
+		while (this->running) {
+	#endif
+	this->current_tick = SDL_GetTicks();
+	this->update_function();
 	fflush(stdout);
-	this->cleanup();
-	return 0; // Things stopped cleanly.
+	this->render_function();
+	fflush(stdout);
+	#ifndef __EMSCRIPTEN__
+		}
+		printf("engine.cpp: engine stopped.\n");
+		fflush(stdout);
+		this->cleanup();
+		return 0; // Things stopped cleanly.
+	#else
+		return 0;
+	#endif
 }
+
+
+#ifdef __EMSCRIPTEN__
+void engine_loop() {
+	gEngine->loop_function();
+}
+#endif
 
 int engine::begin() {
 	SDL_ShowWindow(this->window);
-	this->load_font("ui_default", "C:/Windows/Fonts/Segoeui.ttf", 28);
 	// Start the engine after everything has been initialized.
 	this->running = true;
 	printf("engine.cpp: engine loop begin.\n");
 	fflush(stdout);
-	this->loop_function();
-	printf("engine.cpp: engine loop finished.\n");
-	fflush(stdout);
+	#ifndef __EMSCRIPTEN__
+		this->loop_function();
+		printf("engine.cpp: engine loop finished.\n");
+		fflush(stdout);
+		return 0;
+	#else
+		printf("engine.cpp: setting emscripten main loop.\n");
+		emscripten_set_main_loop(engine_loop, 60, 1);
+	#endif
 	return 0;
 }
 
@@ -221,7 +340,7 @@ int engine::initialize() {
 	// create window handle
 	if ( this->initialized ) {
 		// middle of screen, 1000x700px, resizable
-		this->window = SDL_CreateWindow( "void.GEN 2.0", 100, 100, this->screen_width, this->screen_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE);
+		this->window = SDL_CreateWindow( "void.GEN 2.0", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, this->screen_width, this->screen_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE);
 		if( this->window == NULL )
 		{ // failed to create window
 			SDL_Quit(); // quit sdl
@@ -292,19 +411,31 @@ int engine::initialize() {
 		this->lua_instance = luaL_newstate();
 		
 		luaL_openlibs(this->lua_instance);
+	
+
 		
+		lua_register(this->lua_instance, "create_subtexture", lua_create_sub_texture);
 		lua_register(this->lua_instance, "load_texture", lua_load_texture);
 		lua_register(this->lua_instance, "load_font", lua_load_font);
 		lua_register(this->lua_instance, "render_texture", lua_render_texture);
+		lua_register(this->lua_instance, "render_subtexture", lua_render_subtexture);
 		lua_register(this->lua_instance, "render_rectangle", lua_render_rectangle);
 		lua_register(this->lua_instance, "render_border", lua_render_border);
 		lua_register(this->lua_instance, "render_line", lua_render_line);
 		lua_register(this->lua_instance, "render_text", lua_render_text);
+		lua_register(this->lua_instance, "stop", lua_stop);
 		lua_register(this->lua_instance, "get_screen_dimensions", lua_get_screen_dimensions);
 		lua_register(this->lua_instance, "set_screen_dimensions", lua_set_screen_dimensions);
 		lua_register(this->lua_instance, "get_mouse_position", lua_get_mouse_position);
-		lua_register(this->lua_instance, "stop", lua_stop);
+		lua_register(this->lua_instance, "get_mouse_pressed", lua_get_mouse_pressed);
+		lua_register(this->lua_instance, "get_mouse_released", lua_get_mouse_released);
 		lua_register(this->lua_instance, "get_ticks", lua_get_ticks);
+		lua_register(this->lua_instance, "get_key_down", lua_get_key_down);
+		lua_register(this->lua_instance, "get_key_pressed", lua_get_key_pressed);
+		lua_register(this->lua_instance, "get_key_released", lua_get_key_released);
+		lua_register(this->lua_instance, "hide_cursor", lua_disable_cursor);
+		lua_register(this->lua_instance, "show_cursor", lua_enable_cursor);
+		
 		
 		if (file_exists("./pre_init.lua")) {
 			luaL_dofile(this->lua_instance, "./pre_init.lua");
@@ -313,6 +444,19 @@ int engine::initialize() {
 			printf("engine.cpp: No pre_init.lua found.\n");
 			fflush(stdout);
 			this->initialized = false;
+		}
+	}
+	
+	if (this->initialized) {
+		for (int i =0; i< 256; i++) {
+			this->key_states.pressed[i] = false;
+			this->key_states.released[i] = false;
+			this->key_states.down[i] = false;
+		}
+		for (int i = 0; i < 4; i++) {
+			this->mouse_states.pressed[i] = false;
+			this->mouse_states.released[i] = false;
+			this->mouse_states.down[i] = false;
 		}
 	}
 	
@@ -337,6 +481,7 @@ void engine::stop() {
 
 int engine::cleanup() {
 	// Clean up the engine itself.
+	
 	
 	SDL_Quit(); // Quit SDL2
 	printf("engine.cpp: engine cleaned up.\n");
@@ -371,16 +516,30 @@ int engine::update_function() {
 		return 1; // did not update, consider finding a way to limit this return value happening (efficiency?)
 	}
 	
+	for (int i =0; i< 256; i++) {
+		this->key_states.pressed[i] = false;
+		this->key_states.released[i] = false;
+	}
+	for (int i = 0; i < 4; i++) {
+		this->mouse_states.pressed[i] = false;
+		this->mouse_states.released[i] = false;
+	}
 	// process SDL events.
 	SDL_Event e;
 	while( SDL_PollEvent( &e ) ){
 		if( e.type == SDL_QUIT ) this->stop();
 		else if (e.type == SDL_KEYDOWN) {
-			if (e.key.keysym.sym == SDLK_ESCAPE) {
-				this->stop();
-			} else {
-				
-			}
+			this->key_states.pressed[e.key.keysym.scancode] = true;
+			this->key_states.down[e.key.keysym.scancode] = true;
+		} else if (e.type == SDL_KEYUP) {
+			this->key_states.released[e.key.keysym.scancode] = true;
+			this->key_states.down[e.key.keysym.scancode] = false;
+		} else if (e.type == SDL_MOUSEBUTTONDOWN) {
+			this->mouse_states.pressed[e.button.button] = true;
+			this->mouse_states.down[e.button.button] = true;
+		} else if (e.type == SDL_MOUSEBUTTONUP) {
+			this->mouse_states.released[e.button.button] = true;
+			this->mouse_states.down[e.button.button] = false;
 		} else if (e.type == SDL_WINDOWEVENT) {
 			if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
 				//
@@ -410,7 +569,7 @@ int engine::load_texture(const char *id, const char *file_name) {
 			loading_at = i;
 			break;
 		// if the texture has the target id, it is already loaded and nothing needs to be done.
-		} else if (strcmp(this->Textures[i]->id, id) == 0) {
+		} else if (this->Textures[i]->id == std::string(id)) {
 			return 1; // already loaded
 		}
 	}
@@ -420,14 +579,54 @@ int engine::load_texture(const char *id, const char *file_name) {
 	return 0;
 }
 
+
+int engine::create_subtexture(const char *id, const char *texture_source, int sx, int sy, int w, int h) {
+	int loading_at = 0; // where in the texture list to load to
+	// if textures are destroyed at any point and become null,
+	// this will fill those spaces first.
+	for (int i = 0; i < MAX_SUBTEXTURES; i++) {
+		// if the texture is null
+		if (this->Subtextures[i] == NULL) {
+			// load here
+			loading_at = i;
+			break;
+		// if the texture has the target id, it is already loaded and nothing needs to be done.
+		} else if (this->Subtextures[i]->id == std::string(id)) {
+			return 1; // already loaded
+		}
+		if (i == MAX_SUBTEXTURES - 1) {
+			printf("MAX SUB TEXTURES REACHED\n");
+			fflush(stdout);
+		}
+	}
+	
+	// Create a new voidgen texture with the id from file_name
+	this->Subtextures[loading_at] = new subtexture(id, texture_source, sx, sy, w, h);
+	return 0;
+}
+
 int engine::render_texture(const char *id, int x, int y, double scale_x, double scale_y, bool centered, double rotation) {
 	// search for texture in textures
 	for (int i = 0; i < MAX_TEXTURES; i++) {
 		if (this->Textures[i] == NULL) {
 			
-		} else if (strcmp(this->Textures[i]->id, id) == 0) {
+		} else if (this->Textures[i]->id == std::string(id)) {
 			// if Textures[i] matches target id, draw it.
 			this->Textures[i]->render_at(x, y, scale_x, scale_y, centered, rotation);
+			return 0;
+		} else {
+		}
+	}
+	return 1;
+}
+int engine::render_subtexture(const char *id, int x, int y, double scale_x, double scale_y, bool centered, double rotation) {
+	// search for texture in textures
+	for (int i = 0; i < MAX_SUBTEXTURES; i++) {
+		if (this->Subtextures[i] == NULL) {
+			
+		} else if (this->Subtextures[i]->id == std::string(id)) {
+			// if Textures[i] matches target id, draw it.
+			this->Subtextures[i]->render_at(x, y, scale_x, scale_y, centered, rotation);
 			return 0;
 		}
 	}
@@ -539,6 +738,7 @@ SDL_Point getsize(SDL_Texture *texture) {
 
 // clean up the texture at the end.
 texture::~texture() {
+	fflush(stdout);
 	SDL_DestroyTexture(this->data);
 }
 texture::texture() {}
@@ -546,7 +746,7 @@ texture::texture() {}
 // the texture itself
 texture::texture(const char *id, const char *file_name) {
 	// the id to reference by
-	this->id = id;
+	this->id = std::string(id);
 	// load the image
 	this->data = load_image(file_name);
 	// get the size of the texture
@@ -602,7 +802,73 @@ int texture::render_at(int x, int y, double scale_x=0, double scale_y=0, bool ce
 			target_rect.y = y;
 		}
 	}
+	fflush(stdout);
 	SDL_RenderCopyEx(gEngine->renderer, this->data, NULL, &target_rect, rotation, NULL, SDL_FLIP_NONE);
+	return 0;
+}
+
+subtexture::subtexture(const char *id, const char *source, int source_x, int source_y, int w, int h) {
+	this->id = std::string(id);
+	for (int i = 0; i < MAX_TEXTURES; i++) {
+		if (gEngine->Textures[i] == NULL) {
+			
+		} else {
+			fflush(stdout);
+			if (gEngine->Textures[i]->id == std::string(source)) {
+			// if Textures[i] matches target id, draw it.
+				this->texture_source = gEngine->Textures[i];
+				break;
+			}
+		}
+	}
+	if (this->texture_source == NULL) {
+		return;
+	}
+	this->source_x = source_x;
+	this->source_y = source_y;
+	this->width = w;
+	this->height = h;
+}
+
+int subtexture::render_at(int x, int y, double scale_x=0, double scale_y=0, bool centered=false, double rotation=0) {
+	SDL_Rect source_rect;
+	source_rect.x = this->source_x;
+	source_rect.y = this->source_y;
+	source_rect.w = this->width;
+	source_rect.h = this->height;
+	SDL_Rect target_rect;
+	if (scale_x != 0) {
+		target_rect.w = scale_x;
+		if (centered) {
+			target_rect.x = x - (scale_x) / 2;
+		} else {
+			target_rect.x = x;
+		}
+	} else {
+		target_rect.w = this->texture_source->width;
+		if (centered) {
+			target_rect.x = x - (this->texture_source->width) /2;
+		} else {
+			target_rect.x = x;
+		}
+	}
+	if (scale_y != 0) {
+		target_rect.h = scale_y;
+		if (centered) {
+			target_rect.y = y - (scale_y) / 2;
+		} else {
+			target_rect.y = y;
+		}
+	} else {
+		target_rect.h = this->texture_source->height;
+		if (centered) {
+			target_rect.y = y - (this->texture_source->height) /2;
+		} else {
+			target_rect.y = y;
+		}
+	}
+	SDL_RenderCopyEx(gEngine->renderer, this->texture_source->data, &source_rect, &target_rect, rotation, NULL, SDL_FLIP_NONE);
+	return 0;
 }
 
 TTF_Font* load_font(const char *path, int size) {
@@ -646,6 +912,7 @@ int font::render_at(const char *text, int x, int y, int r, int g, int b, bool ce
 	
 	SDL_FreeSurface(textSurface);
 	SDL_DestroyTexture(loaded_texture);
+	return 0;
 }
 
 /// end classes
