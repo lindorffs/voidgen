@@ -1,3 +1,7 @@
+# Interested in using?
+
+Documentation is sparse... for now. Join me on Discord [here](https://discord.gg/uJhwjhH7eU) for questions, advice, and help.
+
 # Usage
 You can download the current unstable version of the engine from the releases page.
 
