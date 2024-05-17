@@ -251,6 +251,17 @@ int lua_disable_cursor(lua_State *lua_instance) {
 	
 	return 0;
 }
+int lua_disable_resizing(lua_State *lua_instance) {
+	SDL_SetWindowResizable(gEngine->window, SDL_FALSE); // ensure resizable is set.
+	
+	return 0;
+}
+
+int lua_enable_resizing(lua_State *lua_instance) {
+	SDL_SetWindowResizable(gEngine->window, SDL_TRUE); // ensure resizable is set.
+	
+	return 0;
+}
 
 int main(int argc, char *argv[]) {
 	engine Engine = engine();
@@ -415,6 +426,8 @@ int engine::initialize() {
 
 		
 		lua_register(this->lua_instance, "create_subtexture", lua_create_sub_texture);
+		lua_register(this->lua_instance, "disable_screen_resize", lua_disable_resizing);
+		lua_register(this->lua_instance, "enable_screen_resize", lua_enable_resizing);
 		lua_register(this->lua_instance, "load_texture", lua_load_texture);
 		lua_register(this->lua_instance, "load_font", lua_load_font);
 		lua_register(this->lua_instance, "render_texture", lua_render_texture);
