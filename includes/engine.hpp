@@ -5,6 +5,7 @@
 #include <string>
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_thread.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_mixer.h>
@@ -87,6 +88,7 @@ public:
 	font *Fonts[MAX_FONTS];
 	SDL_Window *window = NULL;
 	lua_State *lua_instance = NULL;
+	lua_State *lua_thread = NULL;
 	SDL_Renderer *renderer = NULL;
 	struct keyboard key_states;
 	struct mouse mouse_states;
@@ -97,8 +99,11 @@ public:
 
 	bool initialized = true;
 	bool running = false;
+	bool update_input = false;
+	bool input_handled = false;
 
 	int loop_function(); // main loop function. calls render and update;
+	int handle_events(); // main loop function. calls render and update;
 
 	int render_function(); // called every *fps* times per second;
 	int update_function(); // called every update tick;
