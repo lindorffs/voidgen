@@ -5,6 +5,7 @@
 #include <string>
 
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_thread.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_mixer.h>
@@ -81,13 +82,23 @@ private:
 public:
 	Uint32 last_render = 0; // in ms
 	Uint32 last_update = 0; // in ms
+	Uint32 tick_delta = 0;
+	Uint32 frame_delta = 0;
+	Uint32 tick_rate_real = 0;
+	Uint32 frame_rate_real = 0;
+	Uint32 tick_rate_target = TARGET_TPS;
+	Uint32 frame_rate_target = TARGET_FPS;
 	
 	texture *Textures[MAX_TEXTURES];
 	subtexture *Subtextures[MAX_SUBTEXTURES];
 	font *Fonts[MAX_FONTS];
 	SDL_Window *window = NULL;
 	lua_State *lua_instance = NULL;
+	lua_State *lua_thread = NULL;
 	SDL_Renderer *renderer = NULL;
+	SDL_mutex *input_mutex = NULL;
+	SDL_cond *can_update_input = NULL;
+	SDL_cond *can_process_input = NULL;
 	struct keyboard key_states;
 	struct mouse mouse_states;
 	Uint32 current_tick = 0; // the time since the engine began in ms
@@ -97,8 +108,11 @@ public:
 
 	bool initialized = true;
 	bool running = false;
+	bool update_input = false;
+	bool input_handled = false;
 
 	int loop_function(); // main loop function. calls render and update;
+	int handle_events(); // main loop function. calls render and update;
 
 	int render_function(); // called every *fps* times per second;
 	int update_function(); // called every update tick;
