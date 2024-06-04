@@ -205,11 +205,11 @@ int lua_get_mouse_pressed(lua_State *lua_instance) {
 	const char *button = lua_tolstring(lua_instance, 1, NULL);
 	
 	if (strcmp(button, "left") == 0) {
-		lua_pushboolean(lua_instance, gEngine->mouse_states.pressed[SDL_BUTTON(SDL_BUTTON_LEFT)]);
+		lua_pushboolean(lua_instance, gEngine->mouse_states.pressed[SDL_BUTTON(SDL_BUTTON_LEFT)-1]);
 	} else if (strcmp(button, "right") == 0) {
-		lua_pushboolean(lua_instance, gEngine->mouse_states.pressed[SDL_BUTTON(SDL_BUTTON_RIGHT)]);
+		lua_pushboolean(lua_instance, gEngine->mouse_states.pressed[SDL_BUTTON(SDL_BUTTON_RIGHT)-1]);
 	} else if (strcmp(button, "middle") == 0) {
-		lua_pushboolean(lua_instance, gEngine->mouse_states.pressed[SDL_BUTTON(SDL_BUTTON_MIDDLE)]);
+		lua_pushboolean(lua_instance, gEngine->mouse_states.pressed[SDL_BUTTON(SDL_BUTTON_MIDDLE)-1]);
 	}
 	
 	return 1;
@@ -218,11 +218,11 @@ int lua_get_mouse_released(lua_State *lua_instance) {
 	const char *button = lua_tolstring(lua_instance, 1, NULL);
 	
 	if (strcmp(button, "left") == 0) {
-		lua_pushboolean(lua_instance, gEngine->mouse_states.released[SDL_BUTTON(SDL_BUTTON_LEFT)]);
+		lua_pushboolean(lua_instance, gEngine->mouse_states.released[SDL_BUTTON(SDL_BUTTON_LEFT)-1]);
 	} else if (strcmp(button, "right") == 0) {
-		lua_pushboolean(lua_instance, gEngine->mouse_states.released[SDL_BUTTON(SDL_BUTTON_RIGHT)]);
+		lua_pushboolean(lua_instance, gEngine->mouse_states.released[SDL_BUTTON(SDL_BUTTON_RIGHT)-1]);
 	} else if (strcmp(button, "middle") == 0) {
-		lua_pushboolean(lua_instance, gEngine->mouse_states.released[SDL_BUTTON(SDL_BUTTON_MIDDLE)]);
+		lua_pushboolean(lua_instance, gEngine->mouse_states.released[SDL_BUTTON(SDL_BUTTON_MIDDLE)-1]);
 	}
 	
 	return 1;
@@ -295,8 +295,8 @@ int engine::loop_function() {
 		while (this->running) {
 	#endif
 	this->current_tick = SDL_GetTicks();
-	this->update_function();
-	fflush(stdout);
+	
+	this->handle_events();
 	this->render_function();
 	fflush(stdout);
 	#ifndef __EMSCRIPTEN__
@@ -311,6 +311,15 @@ int engine::loop_function() {
 }
 
 
+#ifndef __EMSCRIPTEN__
+int update_thread_function(void *data) {
+	while (gEngine->running) {
+		gEngine->update_function();
+	}
+	return 0;
+}
+#endif
+
 #ifdef __EMSCRIPTEN__
 void engine_loop() {
 	gEngine->loop_function();
@@ -324,6 +333,7 @@ int engine::begin() {
 	printf("engine.cpp: engine loop begin.\n");
 	fflush(stdout);
 	#ifndef __EMSCRIPTEN__
+		SDL_Thread *update_thread = SDL_CreateThread(update_thread_function, "update_thread", (void *)NULL);
 		this->loop_function();
 		printf("engine.cpp: engine loop finished.\n");
 		fflush(stdout);
@@ -366,7 +376,7 @@ int engine::initialize() {
 	// create renderer
 	if ( this->initialized ) {
 		// no vsync
-		this->renderer = SDL_CreateRenderer(this->window, -1, SDL_RENDERER_PRESENTVSYNC);
+		this->renderer = SDL_CreateRenderer(this->window, -1, NULL);
 		if (this->renderer == NULL)
 		{ // failed to create renderer
 			printf("engine.cpp: Failed to create renderer.\n");
@@ -452,6 +462,9 @@ int engine::initialize() {
 		
 		if (file_exists("./pre_init.lua")) {
 			luaL_dofile(this->lua_instance, "./pre_init.lua");
+			#ifndef __EMSCRIPTEN__
+				this->lua_thread = lua_newthread(this->lua_instance);
+			#endif
 			fflush(stdout);
 		} else {
 			printf("engine.cpp: No pre_init.lua found.\n");
@@ -475,6 +488,9 @@ int engine::initialize() {
 	
 	// all done!
 	if (this->initialized) {
+		this->input_mutex = SDL_CreateMutex();
+		this->can_update_input = SDL_CreateCond();
+		this->can_process_input = SDL_CreateCond();
 		printf("engine.cpp: engine::initialize() success.\n");
 		fflush(stdout);
 		return 0;
@@ -504,55 +520,48 @@ int engine::cleanup() {
 
 int engine::render_function() {
 	// gate the function to only execute render calls if within the FPS target.
-	if  (this->current_tick - this->last_render < 1000/TARGET_FPS) {
-		return 1; // did not render, consider finding a way to limit this return value happening (efficiency?)
-	}
+	//if  (SDL_GetTicks() - this->last_render < 1000/TARGET_FPS) {
+	//	return 1; // did not render, consider finding a way to limit this return value happening (efficiency?)
+	//}
 	// run the render calls
 	
-	SDL_SetRenderDrawColor(this->renderer, 0,  0, 0, 255); // set the draw color to white
-	SDL_RenderClear(this->renderer); // clear the screen
-	
-	
-	lua_getglobal(this->lua_instance, "render");
-	lua_call(this->lua_instance, 0, 0);
-	// render the things here
-	// ..
-	
-	SDL_RenderPresent(this->renderer); // present the display
-	this->last_render = this->current_tick; // update the last render time.
+	this->frame_delta = SDL_GetTicks() - this->last_render;
+	if (this->frame_delta < 1000/this->frame_rate_target) {
+		SDL_Delay(1000/this->frame_rate_target - this->frame_delta);
+	} else {
+		SDL_SetRenderDrawColor(this->renderer, 0,  0, 0, 255); // set the draw color to white
+		SDL_RenderClear(this->renderer); // clear the screen
+		
+		
+		lua_getglobal(this->lua_instance, "render");
+		lua_call(this->lua_instance, 0, 0);
+		// render the things here
+		// ..
+		
+		SDL_RenderPresent(this->renderer); // present the display
+		this->last_render = SDL_GetTicks(); // update the last render time.
+	}
 	return 0;	
 }
 
-int engine::update_function() {
-	// gate the function to only execute render calls if within the TPS target.
-	if  (this->current_tick - this->last_update < 1000/TARGET_TPS) {
-		return 1; // did not update, consider finding a way to limit this return value happening (efficiency?)
-	}
-	
-	for (int i =0; i< 256; i++) {
-		this->key_states.pressed[i] = false;
-		this->key_states.released[i] = false;
-	}
-	for (int i = 0; i < 4; i++) {
-		this->mouse_states.pressed[i] = false;
-		this->mouse_states.released[i] = false;
+int engine::handle_events() {
+	if (this->update_input) {
+		if (this->input_handled) {
+			for (int i =0; i< 256; i++) {
+				this->key_states.pressed[i] = false;
+				this->key_states.released[i] = false;
+			}
+			for (int i = 0; i < 4; i++) {
+				this->mouse_states.pressed[i] = false;
+				this->mouse_states.released[i] = false;
+			}
+		}
 	}
 	// process SDL events.
 	SDL_Event e;
 	while( SDL_PollEvent( &e ) ){
-		if( e.type == SDL_QUIT ) this->stop();
-		else if (e.type == SDL_KEYDOWN) {
-			this->key_states.pressed[e.key.keysym.scancode] = true;
-			this->key_states.down[e.key.keysym.scancode] = true;
-		} else if (e.type == SDL_KEYUP) {
-			this->key_states.released[e.key.keysym.scancode] = true;
-			this->key_states.down[e.key.keysym.scancode] = false;
-		} else if (e.type == SDL_MOUSEBUTTONDOWN) {
-			this->mouse_states.pressed[e.button.button] = true;
-			this->mouse_states.down[e.button.button] = true;
-		} else if (e.type == SDL_MOUSEBUTTONUP) {
-			this->mouse_states.released[e.button.button] = true;
-			this->mouse_states.down[e.button.button] = false;
+		if( e.type == SDL_QUIT ) {
+			this->stop();
 		} else if (e.type == SDL_WINDOWEVENT) {
 			if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
 				//
@@ -561,13 +570,53 @@ int engine::update_function() {
 				this->screen_width = e.window.data1;
 				SDL_RenderSetViewport(this->renderer, NULL);
 			}
+		} else if (this->update_input) {
+			if (e.type == SDL_KEYDOWN) {
+				this->key_states.pressed[e.key.keysym.scancode] = true;
+				this->key_states.down[e.key.keysym.scancode] = true;
+			} else if (e.type == SDL_KEYUP) {
+				this->key_states.released[e.key.keysym.scancode] = true;
+				this->key_states.down[e.key.keysym.scancode] = false;
+			} else if (e.type == SDL_MOUSEBUTTONDOWN) {
+				this->mouse_states.pressed[e.button.button-1] = true;
+				this->mouse_states.down[e.button.button-1] = true;
+			} else if (e.type == SDL_MOUSEBUTTONUP) {
+				this->mouse_states.released[e.button.button-1] = true;
+				this->mouse_states.down[e.button.button-1] = false;
+			}
 		}
 	}
+	if (this->update_input) {
+		SDL_CondSignal(this->can_process_input);
+		this->input_handled = false;
+	}
 	
-	lua_getglobal(this->lua_instance, "update");
-	lua_call(this->lua_instance, 0, 0);
+	return 0;
+}
+
+int engine::update_function() {
+	// gate the function to only execute render calls if within the TPS target.
+	//if  (SDL_GetTicks() - this->last_update < 1000/TARGET_TPS) {
+	//	return 1; // did not update, consider finding a way to limit this return value happening (efficiency?)
+	//}
 	
-	this->last_update = this->current_tick;
+	this->tick_delta = SDL_GetTicks() - this->last_update;
+	if (this->tick_delta < 1000/this->tick_rate_target) {
+		SDL_Delay(1000/this->tick_rate_target - this->tick_delta);	
+	} else {
+		SDL_CondWait(this->can_process_input, this->input_mutex);
+		#ifdef __EMSCRIPTEN__
+		lua_getglobal(this->lua_instance, "update");
+		lua_call(this->lua_instance, 0, 0);
+		#endif
+		#ifndef __EMSCRIPTEN__
+		lua_getglobal(this->lua_thread, "update");
+		lua_call(this->lua_thread, 0, 0);
+		#endif
+		this->last_update = SDL_GetTicks();
+		this->update_input = true;
+		this->input_handled = true;
+	}
 	return 0;
 }
 
