@@ -82,6 +82,12 @@ private:
 public:
 	Uint32 last_render = 0; // in ms
 	Uint32 last_update = 0; // in ms
+	Uint32 tick_delta = 0;
+	Uint32 frame_delta = 0;
+	Uint32 tick_rate_real = 0;
+	Uint32 frame_rate_real = 0;
+	Uint32 tick_rate_target = TARGET_TPS;
+	Uint32 frame_rate_target = TARGET_FPS;
 	
 	texture *Textures[MAX_TEXTURES];
 	subtexture *Subtextures[MAX_SUBTEXTURES];
@@ -90,6 +96,9 @@ public:
 	lua_State *lua_instance = NULL;
 	lua_State *lua_thread = NULL;
 	SDL_Renderer *renderer = NULL;
+	SDL_mutex *input_mutex = NULL;
+	SDL_cond *can_update_input = NULL;
+	SDL_cond *can_process_input = NULL;
 	struct keyboard key_states;
 	struct mouse mouse_states;
 	Uint32 current_tick = 0; // the time since the engine began in ms
