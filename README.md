@@ -16,7 +16,7 @@ The SDL2 and LUA5.3 headers should be located in ``includes/LUA`` and ``includes
 ```
 g++ engine.cpp -I./includes -static-libstdc++ -static-libgcc \
 -Wl,-Bstatic -lstdc++ -lpthread \
--Wl,-Bdynamic -lSDL2main -lSDL2 \
--lSDL2_image -lSDL2_mixer -lSDL2_ttf \
+-Wl,-Bdynamic -lSDL3 \
+-lSDL3_image -lSDL3_ttf \
 -llua5.3 -o VoidGEN.bin
 ```
