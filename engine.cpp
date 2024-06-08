@@ -800,6 +800,8 @@ texture::texture(const char *id, const char *file_name) {
 	// store it.
 	this->width = size.x;
 	this->height = size.y;
+	
+	SDL_SetTextureScaleMode(this->data, SDL_SCALEMODE_NEAREST);
 }
 
 // renders the texture at x,y with a size of scale_x,scale_y, centered around x+w/2,y+h/2 or not, with a rotation.
