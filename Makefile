@@ -11,13 +11,13 @@ LIBRARY_PATHS = -L./libs
 
 COMPILER_FLAGS = -w -Wl,-subsystem,windows
 
-LINKER_FLAGS = -static-libstdc++ -static-libgcc -Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic -lmingw32 -lSDL2main -lSDL2 -lSDL2_image -lSDL2_mixer -lSDL2_ttf -lSDL2_mixer -llua
+LINKER_FLAGS = -static-libstdc++ -static-libgcc -Wl,-Bstatic -lstdc++ -lpthread -Wl,-Bdynamic -lmingw32 -lSDL3 -lSDL3_image -lSDL3_ttf -llua
 
-WIN32_OBJ_NAME = ./win32/voidGEN
+win32_OBJ_NAME = ./win32/voidGEN
 EM_OBJ_NAME = ./html/index.html
 
 all: $(OBJS) | win32-runtimes  win32-assets  win32-core
-	$(CC) $(OBJS) $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS) $(LINKER_FLAGS) -o $(WIN32_OBJ_NAME)
+	$(CC) $(OBJS) $(INCLUDE_PATHS) $(LIBRARY_PATHS) $(COMPILER_FLAGS) $(LINKER_FLAGS) -o $(win32_OBJ_NAME)
 
 win32-core: win32-build-dir
 	cp ./pre_init.lua ./win32/
