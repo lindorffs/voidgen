@@ -1,6 +1,6 @@
 # VoidGEN
 
-A lightweight, LUA powered, 2D game engine.
+A lightweight, LUA powered, 2D game engine built with SDL3.
 
 ## Usage
 You can download the current unstable version of the engine from the releases page. Or build it from source.
