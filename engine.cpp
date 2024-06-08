@@ -488,6 +488,9 @@ int engine::initialize() {
 	
 	// all done!
 	if (this->initialized) {
+		this->input_mutex = SDL_CreateMutex();
+		this->can_update_input = SDL_CreateCond();
+		this->can_process_input = SDL_CreateCond();
 		printf("engine.cpp: engine::initialize() success.\n");
 		fflush(stdout);
 		return 0;
@@ -517,37 +520,41 @@ int engine::cleanup() {
 
 int engine::render_function() {
 	// gate the function to only execute render calls if within the FPS target.
-	if  (SDL_GetTicks() - this->last_render < 1000/TARGET_FPS) {
-		return 1; // did not render, consider finding a way to limit this return value happening (efficiency?)
-	}
+	//if  (SDL_GetTicks() - this->last_render < 1000/TARGET_FPS) {
+	//	return 1; // did not render, consider finding a way to limit this return value happening (efficiency?)
+	//}
 	// run the render calls
 	
-	SDL_SetRenderDrawColor(this->renderer, 0,  0, 0, 255); // set the draw color to white
-	SDL_RenderClear(this->renderer); // clear the screen
-	
-	
-	lua_getglobal(this->lua_instance, "render");
-	lua_call(this->lua_instance, 0, 0);
-	// render the things here
-	// ..
-	
-	SDL_RenderPresent(this->renderer); // present the display
-	this->last_render = SDL_GetTicks(); // update the last render time.
+	this->frame_delta = SDL_GetTicks() - this->last_render;
+	if (this->frame_delta < 1000/this->frame_rate_target) {
+		SDL_Delay(1000/this->frame_rate_target - this->frame_delta);
+	} else {
+		SDL_SetRenderDrawColor(this->renderer, 0,  0, 0, 255); // set the draw color to white
+		SDL_RenderClear(this->renderer); // clear the screen
+		
+		
+		lua_getglobal(this->lua_instance, "render");
+		lua_call(this->lua_instance, 0, 0);
+		// render the things here
+		// ..
+		
+		SDL_RenderPresent(this->renderer); // present the display
+		this->last_render = SDL_GetTicks(); // update the last render time.
+	}
 	return 0;	
 }
 
 int engine::handle_events() {
-	if  (SDL_GetTicks() - this->last_update < 1000/TARGET_TPS) {
-		return 1;
-	}
-	if (this->input_handled) {
-		for (int i =0; i< 256; i++) {
-			this->key_states.pressed[i] = false;
-			this->key_states.released[i] = false;
-		}
-		for (int i = 0; i < 4; i++) {
-			this->mouse_states.pressed[i] = false;
-			this->mouse_states.released[i] = false;
+	if (this->update_input) {
+		if (this->input_handled) {
+			for (int i =0; i< 256; i++) {
+				this->key_states.pressed[i] = false;
+				this->key_states.released[i] = false;
+			}
+			for (int i = 0; i < 4; i++) {
+				this->mouse_states.pressed[i] = false;
+				this->mouse_states.released[i] = false;
+			}
 		}
 	}
 	// process SDL events.
@@ -580,7 +587,7 @@ int engine::handle_events() {
 		}
 	}
 	if (this->update_input) {
-		this->update_input = false;
+		SDL_CondSignal(this->can_process_input);
 		this->input_handled = false;
 	}
 	
@@ -589,29 +596,27 @@ int engine::handle_events() {
 
 int engine::update_function() {
 	// gate the function to only execute render calls if within the TPS target.
-	if  (SDL_GetTicks() - this->last_update < 1000/TARGET_TPS) {
-		return 1; // did not update, consider finding a way to limit this return value happening (efficiency?)
+	//if  (SDL_GetTicks() - this->last_update < 1000/TARGET_TPS) {
+	//	return 1; // did not update, consider finding a way to limit this return value happening (efficiency?)
+	//}
+	
+	this->tick_delta = SDL_GetTicks() - this->last_update;
+	if (this->tick_delta < 1000/this->tick_rate_target) {
+		SDL_Delay(1000/this->tick_rate_target - this->tick_delta);	
+	} else {
+		SDL_CondWait(this->can_process_input, this->input_mutex);
+		#ifdef __EMSCRIPTEN__
+		lua_getglobal(this->lua_instance, "update");
+		lua_call(this->lua_instance, 0, 0);
+		#endif
+		#ifndef __EMSCRIPTEN__
+		lua_getglobal(this->lua_thread, "update");
+		lua_call(this->lua_thread, 0, 0);
+		#endif
+		this->last_update = SDL_GetTicks();
+		this->update_input = true;
+		this->input_handled = true;
 	}
-	
-	this->update_input = true;
-	int i = 1;
-	while (this->update_input) {
-		printf("Spin Lock Loop Count: %d\n");
-		fflush(stdout);
-		i = i + 1;
-	}
-	
-	#ifdef __EMSCRIPTEN__
-	lua_getglobal(this->lua_instance, "update");
-	lua_call(this->lua_instance, 0, 0);
-	#endif
-	#ifndef __EMSCRIPTEN__
-	lua_getglobal(this->lua_thread, "update");
-	lua_call(this->lua_thread, 0, 0);
-	#endif
-	
-	this->last_update = SDL_GetTicks();
-	this->input_handled = true;
 	return 0;
 }
 
