@@ -4,11 +4,11 @@
 // end define gaurd
 #include <string>
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_thread.h>
-#include <SDL2/SDL_image.h>
-#include <SDL2/SDL_ttf.h>
-#include <SDL2/SDL_mixer.h>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_thread.h>
+#include <SDL3/SDL_image.h>
+#include <SDL3/SDL_ttf.h>
+#include <SDL3/SDL_mixer.h>
 
 #include <LUA/lua.hpp>
 
@@ -96,9 +96,9 @@ public:
 	lua_State *lua_instance = NULL;
 	lua_State *lua_thread = NULL;
 	SDL_Renderer *renderer = NULL;
-	SDL_mutex *input_mutex = NULL;
-	SDL_cond *can_update_input = NULL;
-	SDL_cond *can_process_input = NULL;
+	SDL_Mutex *input_mutex = NULL;
+	SDL_Condition *can_update_input = NULL;
+	SDL_Condition *can_process_input = NULL;
 	struct keyboard key_states;
 	struct mouse mouse_states;
 	Uint32 current_tick = 0; // the time since the engine began in ms
