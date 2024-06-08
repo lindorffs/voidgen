@@ -163,8 +163,8 @@ int lua_set_screen_dimensions(lua_State *lua_instance) {
 }
 
 int lua_get_mouse_position(lua_State *lua_instance) {
-	int x = 0;
-	int y = 0;
+	float x = 0;
+	float y = 0;
 	
 	SDL_GetMouseState(&x, &y);
 	
@@ -242,12 +242,12 @@ int lua_get_ticks(lua_State *lua_instance) {
 }
 
 int lua_enable_cursor(lua_State *lua_instance) {
-	SDL_ShowCursor(SDL_ENABLE);
+	SDL_ShowCursor();
 	
 	return 0;
 }
 int lua_disable_cursor(lua_State *lua_instance) {
-	SDL_ShowCursor(SDL_DISABLE);
+	SDL_HideCursor();
 	
 	return 0;
 }
@@ -361,7 +361,7 @@ int engine::initialize() {
 	// create window handle
 	if ( this->initialized ) {
 		// middle of screen, 1000x700px, resizable
-		this->window = SDL_CreateWindow( "void.GEN 2.0", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, this->screen_width, this->screen_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE);
+		this->window = SDL_CreateWindow( "void.GEN 2.0", this->screen_width, this->screen_height, SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE);
 		if( this->window == NULL )
 		{ // failed to create window
 			SDL_Quit(); // quit sdl
@@ -376,7 +376,7 @@ int engine::initialize() {
 	// create renderer
 	if ( this->initialized ) {
 		// no vsync
-		this->renderer = SDL_CreateRenderer(this->window, -1, NULL);
+		this->renderer = SDL_CreateRenderer(this->window, NULL);
 		if (this->renderer == NULL)
 		{ // failed to create renderer
 			printf("engine.cpp: Failed to create renderer.\n");
@@ -392,21 +392,7 @@ int engine::initialize() {
 	
 	// intialize audio
 	if (this->initialized) {
-		// SDL mixer init
-		if( Mix_OpenAudio( 44100, AUDIO_F32SYS, 8, 1024 ) < 0 )
-		{ // failed
-			printf("engine.cpp: Mix_OpenAudio produced SDL_mixer Error: %s\n", Mix_GetError() );
-			fflush(stdout);
-			this->initialized = false;
-		} else
-		{ // initialized audo
-			// initialize ogg support
-			if (Mix_Init(MIX_INIT_OGG) & MIX_INIT_OGG != MIX_INIT_OGG) {
-				printf("engine.cpp: OGG Support not found\n");
-				fflush(stdout);
-				this->initialized = false;
-			}
-		}
+
 	}
 	
 	// initialize image
@@ -489,8 +475,8 @@ int engine::initialize() {
 	// all done!
 	if (this->initialized) {
 		this->input_mutex = SDL_CreateMutex();
-		this->can_update_input = SDL_CreateCond();
-		this->can_process_input = SDL_CreateCond();
+		this->can_update_input = SDL_CreateCondition();
+		this->can_process_input = SDL_CreateCondition();
 		printf("engine.cpp: engine::initialize() success.\n");
 		fflush(stdout);
 		return 0;
@@ -560,34 +546,32 @@ int engine::handle_events() {
 	// process SDL events.
 	SDL_Event e;
 	while( SDL_PollEvent( &e ) ){
-		if( e.type == SDL_QUIT ) {
+		if( e.type == SDL_EVENT_QUIT ) {
 			this->stop();
-		} else if (e.type == SDL_WINDOWEVENT) {
-			if (e.window.event == SDL_WINDOWEVENT_RESIZED) {
-				//
-			} else if (e.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
-				this->screen_height = e.window.data2;
-				this->screen_width = e.window.data1;
-				SDL_RenderSetViewport(this->renderer, NULL);
-			}
+		} else if (e.type == SDL_EVENT_WINDOW_RESIZED) {
+			//
+		} else if (e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+			this->screen_height = e.window.data2;
+			this->screen_width = e.window.data1;
+			SDL_SetRenderViewport(this->renderer, NULL);
 		} else if (this->update_input) {
-			if (e.type == SDL_KEYDOWN) {
+			if (e.type == SDL_EVENT_KEY_DOWN) {
 				this->key_states.pressed[e.key.keysym.scancode] = true;
 				this->key_states.down[e.key.keysym.scancode] = true;
-			} else if (e.type == SDL_KEYUP) {
+			} else if (e.type == SDL_EVENT_KEY_UP) {
 				this->key_states.released[e.key.keysym.scancode] = true;
 				this->key_states.down[e.key.keysym.scancode] = false;
-			} else if (e.type == SDL_MOUSEBUTTONDOWN) {
+			} else if (e.type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
 				this->mouse_states.pressed[e.button.button-1] = true;
 				this->mouse_states.down[e.button.button-1] = true;
-			} else if (e.type == SDL_MOUSEBUTTONUP) {
+			} else if (e.type == SDL_EVENT_MOUSE_BUTTON_UP) {
 				this->mouse_states.released[e.button.button-1] = true;
 				this->mouse_states.down[e.button.button-1] = false;
 			}
 		}
 	}
 	if (this->update_input) {
-		SDL_CondSignal(this->can_process_input);
+		SDL_SignalCondition(this->can_process_input);
 		this->input_handled = false;
 	}
 	
@@ -604,7 +588,7 @@ int engine::update_function() {
 	if (this->tick_delta < 1000/this->tick_rate_target) {
 		SDL_Delay(1000/this->tick_rate_target - this->tick_delta);	
 	} else {
-		SDL_CondWait(this->can_process_input, this->input_mutex);
+		SDL_WaitCondition(this->can_process_input, this->input_mutex);
 		#ifdef __EMSCRIPTEN__
 		lua_getglobal(this->lua_instance, "update");
 		lua_call(this->lua_instance, 0, 0);
@@ -734,7 +718,7 @@ int engine::render_text(const char *id, const char *text, int x, int y, int r, i
 
 void engine::render_line(int x1, int y1, int x2, int y2, int r, int g, int b, int a) {
 	SDL_SetRenderDrawColor(this->renderer, r, g, b, a);
-	SDL_RenderDrawLine(this->renderer, x1, y1, x2, y2);
+	SDL_RenderLine(this->renderer, x1, y1, x2, y2);
 }
 
 void engine::render_rectangle(int x, int y, int w, int h, int r, int g, int b, int a, bool centered) {
@@ -742,7 +726,7 @@ void engine::render_rectangle(int x, int y, int w, int h, int r, int g, int b, i
 		x = x - w / 2;
 		y = y - h / 2;
 	}
-	SDL_Rect draw_rect = {x, y, w, h};
+	SDL_FRect draw_rect = {x, y, w, h};
 	SDL_SetRenderDrawColor(this->renderer, r, g, b, a);
 	SDL_RenderFillRect(this->renderer, &draw_rect);
 }
@@ -783,7 +767,7 @@ SDL_Texture *load_image(const char *file_name) {
 	} else {
 		// store the image as an actual texture;
 		loaded_texture = SDL_CreateTextureFromSurface(gEngine->renderer, loaded_surface);
-		SDL_FreeSurface(loaded_surface);
+		SDL_DestroySurface(loaded_surface);
 	}
 	return loaded_texture;
 }
@@ -821,7 +805,7 @@ texture::texture(const char *id, const char *file_name) {
 // renders the texture at x,y with a size of scale_x,scale_y, centered around x+w/2,y+h/2 or not, with a rotation.
 int texture::render_at(int x, int y, double scale_x=0, double scale_y=0, bool centered=false, double rotation=0) {
 	// The area to draw to.
-	SDL_Rect target_rect;
+	SDL_FRect target_rect;
 	
 	// if the scale is set for x
 	if (scale_x != 0) {
@@ -865,7 +849,7 @@ int texture::render_at(int x, int y, double scale_x=0, double scale_y=0, bool ce
 		}
 	}
 	fflush(stdout);
-	SDL_RenderCopyEx(gEngine->renderer, this->data, NULL, &target_rect, rotation, NULL, SDL_FLIP_NONE);
+	SDL_RenderTextureRotated(gEngine->renderer, this->data, NULL, &target_rect, rotation, NULL, SDL_FLIP_NONE);
 	return 0;
 }
 
@@ -893,12 +877,12 @@ subtexture::subtexture(const char *id, const char *source, int source_x, int sou
 }
 
 int subtexture::render_at(int x, int y, double scale_x=0, double scale_y=0, bool centered=false, double rotation=0) {
-	SDL_Rect source_rect;
+	SDL_FRect source_rect;
 	source_rect.x = this->source_x;
 	source_rect.y = this->source_y;
 	source_rect.w = this->width;
 	source_rect.h = this->height;
-	SDL_Rect target_rect;
+	SDL_FRect target_rect;
 	if (scale_x != 0) {
 		target_rect.w = scale_x;
 		if (centered) {
@@ -929,7 +913,7 @@ int subtexture::render_at(int x, int y, double scale_x=0, double scale_y=0, bool
 			target_rect.y = y;
 		}
 	}
-	SDL_RenderCopyEx(gEngine->renderer, this->texture_source->data, &source_rect, &target_rect, rotation, NULL, SDL_FLIP_NONE);
+	SDL_RenderTextureRotated(gEngine->renderer, this->texture_source->data, &source_rect, &target_rect, rotation, NULL, SDL_FLIP_NONE);
 	return 0;
 }
 
@@ -956,7 +940,7 @@ int font::render_at(const char *text, int x, int y, int r, int g, int b, bool ce
 	SDL_Surface* textSurface = TTF_RenderText_Solid( this->data, text, text_color);
 	SDL_Texture* loaded_texture = SDL_CreateTextureFromSurface(gEngine->renderer, textSurface);
 	SDL_Point size = getsize(loaded_texture);
-	SDL_Rect target_rect;
+	SDL_FRect target_rect;
 	target_rect.w = size.x;
 	target_rect.h = size.y;
 
@@ -970,9 +954,9 @@ int font::render_at(const char *text, int x, int y, int r, int g, int b, bool ce
 	} else {
 		target_rect.y = y;
 	}
-	SDL_RenderCopyEx(gEngine->renderer, loaded_texture, NULL, &target_rect, rotation, NULL, SDL_FLIP_NONE);
+	SDL_RenderTextureRotated(gEngine->renderer, loaded_texture, NULL, &target_rect, rotation, NULL, SDL_FLIP_NONE);
 	
-	SDL_FreeSurface(textSurface);
+	SDL_DestroySurface(textSurface);
 	SDL_DestroyTexture(loaded_texture);
 	return 0;
 }
