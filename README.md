@@ -14,7 +14,7 @@ Ultimately, VoidGEN is a single header file and a single .cpp file linked with S
 The SDL3 and LUA5.3 headers should be located in ``includes/LUA`` and ``includes/SDL3``.
 
 ```
-g++ engine.cpp -I./includes -static-libstdc++ -static-libgcc \
+g++ src/*.cpp -I./includes -static-libstdc++ -static-libgcc \
 -Wl,-Bstatic -lstdc++ -lpthread \
 -Wl,-Bdynamic -lSDL3 \
 -lSDL3_image -lSDL3_ttf \
