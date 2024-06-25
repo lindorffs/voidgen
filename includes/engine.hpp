@@ -135,6 +135,7 @@ public:
 	texture *Textures[MAX_TEXTURES];
 	subtexture *Subtextures[MAX_SUBTEXTURES];
 	font *Fonts[MAX_FONTS];
+
 	SDL_Window *window = NULL;
 	lua_State *lua_instance = NULL;
 	lua_State *lua_thread = NULL;
@@ -143,6 +144,9 @@ public:
 	SDL_Condition *can_update_input = NULL;
 	SDL_Condition *can_process_input = NULL;
 	state_machine *state_manager = NULL;
+	
+	ImGuiIO UIIo; 
+	
 	struct keyboard key_states;
 	struct mouse mouse_states;
 	Uint32 current_tick = 0; // the time since the engine began in ms
