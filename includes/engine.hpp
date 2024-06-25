@@ -10,6 +10,10 @@
 #include <SDL3/SDL_ttf.h>
 #include <SDL3/SDL_mixer.h>
 
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_sdlrenderer3.h"
+
 #include <LUA/lua.hpp>
 
 #define TARGET_FPS 60 // How many frames per second are *desired*.
