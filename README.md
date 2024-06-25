@@ -1,5 +1,3 @@
-# NOTICE: engine.hpp on this branch is out of date, and this branch will not compile until fixed.
-
 # VoidGEN
 
 A lightweight, LUA powered, 2D game engine built with SDL3.
