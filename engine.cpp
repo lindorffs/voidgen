@@ -4,6 +4,9 @@
 #define PLATFORM_WEB
 #endif
 
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_sdlrenderer3.h"
 #include <engine.hpp>
 #include <stdio.h>
 #include <string.h>
@@ -11,11 +14,14 @@
 #include <vglogo.h>
 
 #include <sys/stat.h>
+
 int file_exists(const char *name)
 {
+
   struct stat   buffer;
   return (stat (name, &buffer) == 0);
 }
+
 
 /// BEGIN LUA PASSTHROUGHS
 
@@ -286,6 +292,64 @@ int lua_enable_resizing(lua_State *lua_instance) {
 	return 0;
 }
 
+int lua_set_fullscreen(lua_State *lua_instance) {
+	bool enabled = lua_toboolean(lua_instance, 1);
+	SDL_SetWindowFullscreen(gEngine->window, enabled ? SDL_TRUE : SDL_FALSE);
+}
+
+int lua_imgui_start_fixed_window(lua_State *lua_instance) {
+	const char *title = lua_tolstring(lua_instance, 1, NULL);
+	ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove;
+	ImGui::Begin(title, (bool *)false, window_flags);
+	return 0;
+}
+int lua_imgui_start_standard_window(lua_State *lua_instance) {
+	const char *title = lua_tolstring(lua_instance, 1, NULL);
+	ImGui::Begin(title, (bool *)false, 0);
+	return 0;
+}
+
+int lua_imgui_end(lua_State *lua_instance) {
+	ImGui::End();
+	return 0;
+}
+
+int lua_imgui_text(lua_State *lua_instance) {
+	const char *text = lua_tolstring(lua_instance, 1, NULL);
+	ImGui::Text(text);
+	return 0;
+}
+
+int lua_imgui_button(lua_State *lua_instance) {
+	const char *title = lua_tolstring(lua_instance, 1, NULL);
+	const char *callback = lua_tolstring(lua_instance, 2, NULL);
+	const int w = lua_tonumber(lua_instance, 3);
+	const int h = lua_tonumber(lua_instance, 4);
+	if (ImGui::Button(title, ImVec2(w,h))) {
+		luaL_dostring(gEngine->lua_instance, callback);
+	}
+	return 0;
+}
+
+int lua_imgui_window_size(lua_State *lua_instance) {
+	float w = lua_tonumber(lua_instance, 1);
+	float h = lua_tonumber(lua_instance, 2);
+	ImGui::SetWindowSize(ImVec2(w,h));
+	return 0;
+}
+int lua_imgui_window_pos(lua_State *lua_instance) {
+	float x = lua_tonumber(lua_instance, 1);
+	float y = lua_tonumber(lua_instance, 2);
+	ImGui::SetWindowPos(ImVec2(x,y));
+	return 0;
+}
+int lua_imgui_cursor_pos(lua_State *lua_instance) {
+	float x = lua_tonumber(lua_instance, 1);
+	float y = lua_tonumber(lua_instance, 2);
+	ImGui::SetCursorPos(ImVec2(x,y));
+	return 0;
+}
+
 int main(int argc, char *argv[]) {
 	engine Engine = engine();
 	gEngine = &Engine;
@@ -448,6 +512,7 @@ int engine::initialize() {
 		lua_register(this->lua_instance, "create_subtexture", lua_create_sub_texture);
 		lua_register(this->lua_instance, "disable_screen_resize", lua_disable_resizing);
 		lua_register(this->lua_instance, "enable_screen_resize", lua_enable_resizing);
+		lua_register(this->lua_instance, "set_fullscreen", lua_set_fullscreen);
 		lua_register(this->lua_instance, "load_texture", lua_load_texture);
 		lua_register(this->lua_instance, "load_font", lua_load_font);
 		lua_register(this->lua_instance, "render_texture", lua_render_texture);
@@ -470,11 +535,21 @@ int engine::initialize() {
 		lua_register(this->lua_instance, "show_cursor", lua_enable_cursor);
 		lua_register(this->lua_instance, "register_state", lua_register_state);
 		lua_register(this->lua_instance, "set_state", lua_set_state);
+		lua_register(this->lua_instance, "IMGui_start_fixed_window", lua_imgui_start_fixed_window);
+		lua_register(this->lua_instance, "IMGui_start_standard_window", lua_imgui_start_standard_window);
+		lua_register(this->lua_instance, "IMGui_end", lua_imgui_end);
+		lua_register(this->lua_instance, "IMGui_text", lua_imgui_text);
+		lua_register(this->lua_instance, "IMGui_button", lua_imgui_button);
+		lua_register(this->lua_instance, "IMGui_window_size", lua_imgui_window_size);
+		lua_register(this->lua_instance, "IMGui_window_pos", lua_imgui_window_pos);
+		lua_register(this->lua_instance, "IMGui_cursor_pos", lua_imgui_cursor_pos);
+
+
 		
 		if (file_exists("./logo.png")) {
 		} else {
 			std::ofstream ofile = std::ofstream("./logo.png", std::ios::binary);
-			ofile.write(vglogo, sizeof(vglogo));
+			ofile.write((const char*)vglogo, sizeof(vglogo));
 			ofile.close();
 		}
 		
@@ -520,6 +595,21 @@ int engine::initialize() {
 		this->input_mutex = SDL_CreateMutex();
 		this->can_update_input = SDL_CreateCondition();
 		this->can_process_input = SDL_CreateCondition();
+		
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		this->UIIo = ImGui::GetIO(); (void)this->UIIo;
+		this->UIIo.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+		this->UIIo.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+		// Setup Dear ImGui style
+		ImGui::StyleColorsDark();
+		//ImGui::StyleColorsLight();
+
+		// Setup Platform/Renderer backends
+		ImGui_ImplSDL3_InitForSDLRenderer(this->window, this->renderer);
+		ImGui_ImplSDLRenderer3_Init(this->renderer);
+		
 		printf("engine.cpp: engine::initialize() success.\n");
 		fflush(stdout);
 		return 0;
@@ -540,7 +630,7 @@ void engine::stop() {
 int engine::cleanup() {
 	// Clean up the engine itself.
 	
-	
+	SDL_DestroyRenderer(this->renderer);
 	SDL_Quit(); // Quit SDL2
 	printf("engine.cpp: engine cleaned up.\n");
 	fflush(stdout);
@@ -561,11 +651,14 @@ int engine::render_function() {
 		SDL_SetRenderDrawColor(this->renderer, 0,  0, 0, 255); // set the draw color to white
 		SDL_RenderClear(this->renderer); // clear the screen
 		
-		
+		ImGui_ImplSDLRenderer3_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
 		this->state_manager->render();
+        ImGui::Render();
 		// render the things here
 		// ..
-		
+		ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), this->renderer);
 		SDL_RenderPresent(this->renderer); // present the display
 		this->last_render = SDL_GetTicks(); // update the last render time.
 	}
@@ -587,7 +680,9 @@ int engine::handle_events() {
 	}
 	// process SDL events.
 	SDL_Event e;
+	
 	while( SDL_PollEvent( &e ) ){
+		ImGui_ImplSDL3_ProcessEvent(&e);
 		if( e.type == SDL_EVENT_QUIT ) {
 			this->stop();
 		} else if (e.type == SDL_EVENT_WINDOW_RESIZED) {
@@ -610,8 +705,11 @@ int engine::handle_events() {
 				this->mouse_states.released[e.button.button-1] = true;
 				this->mouse_states.down[e.button.button-1] = false;
 			}
+		} else {
+		
 		}
 	}
+	
 	if (this->update_input) {
 		SDL_SignalCondition(this->can_process_input);
 		this->input_handled = false;
@@ -1099,4 +1197,3 @@ void state_machine::register_state(std::string file, std::string name) {
 }
 
 /// end classes
-
