@@ -292,10 +292,20 @@ int lua_enable_resizing(lua_State *lua_instance) {
 	return 0;
 }
 
+int lua_set_fullscreen(lua_State *lua_instance) {
+	bool enabled = lua_toboolean(lua_instance, 1);
+	SDL_SetWindowFullscreen(gEngine->window, enabled ? SDL_TRUE : SDL_FALSE);
+}
+
 int lua_imgui_start_fixed_window(lua_State *lua_instance) {
 	const char *title = lua_tolstring(lua_instance, 1, NULL);
 	ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove;
 	ImGui::Begin(title, (bool *)false, window_flags);
+	return 0;
+}
+int lua_imgui_start_standard_window(lua_State *lua_instance) {
+	const char *title = lua_tolstring(lua_instance, 1, NULL);
+	ImGui::Begin(title, (bool *)false, 0);
 	return 0;
 }
 
@@ -316,7 +326,7 @@ int lua_imgui_button(lua_State *lua_instance) {
 	const int w = lua_tonumber(lua_instance, 3);
 	const int h = lua_tonumber(lua_instance, 4);
 	if (ImGui::Button(title, ImVec2(w,h))) {
-		printf("%s\n",callback);
+		luaL_dostring(gEngine->lua_instance, callback);
 	}
 	return 0;
 }
@@ -502,6 +512,7 @@ int engine::initialize() {
 		lua_register(this->lua_instance, "create_subtexture", lua_create_sub_texture);
 		lua_register(this->lua_instance, "disable_screen_resize", lua_disable_resizing);
 		lua_register(this->lua_instance, "enable_screen_resize", lua_enable_resizing);
+		lua_register(this->lua_instance, "set_fullscreen", lua_set_fullscreen);
 		lua_register(this->lua_instance, "load_texture", lua_load_texture);
 		lua_register(this->lua_instance, "load_font", lua_load_font);
 		lua_register(this->lua_instance, "render_texture", lua_render_texture);
@@ -525,6 +536,7 @@ int engine::initialize() {
 		lua_register(this->lua_instance, "register_state", lua_register_state);
 		lua_register(this->lua_instance, "set_state", lua_set_state);
 		lua_register(this->lua_instance, "IMGui_start_fixed_window", lua_imgui_start_fixed_window);
+		lua_register(this->lua_instance, "IMGui_start_standard_window", lua_imgui_start_standard_window);
 		lua_register(this->lua_instance, "IMGui_end", lua_imgui_end);
 		lua_register(this->lua_instance, "IMGui_text", lua_imgui_text);
 		lua_register(this->lua_instance, "IMGui_button", lua_imgui_button);
