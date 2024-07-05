@@ -4,16 +4,24 @@
 #define PLATFORM_WEB
 #endif
 
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_sdlrenderer3.h"
 #include <engine.hpp>
 #include <stdio.h>
 #include <string.h>
+#include <fstream>
+#include <vglogo.h>
 
 #include <sys/stat.h>
+
 int file_exists(const char *name)
 {
+
   struct stat   buffer;
   return (stat (name, &buffer) == 0);
 }
+
 
 /// BEGIN LUA PASSTHROUGHS
 
@@ -140,6 +148,27 @@ int lua_render_text(lua_State *lua_instance) {
 	//this->render_text(text, x, y, r, g, b);
 	return 0;
 }
+int lua_register_state(lua_State *lua_instance) {
+	int args = lua_gettop(lua_instance);
+	
+	const char *state_file = lua_tolstring(lua_instance, 1, NULL);
+	const char *state_name = lua_tolstring(lua_instance, 2, NULL);
+	
+	gEngine->state_manager->register_state(state_file, state_name);
+	
+	//this->render_text(text, x, y, r, g, b);
+	return 0;
+}
+int lua_set_state(lua_State *lua_instance) {
+	int args = lua_gettop(lua_instance);
+	
+	const char *state_name = lua_tolstring(lua_instance, 1, NULL);
+	
+	gEngine->state_manager->set_current_state(state_name);
+	
+	//this->render_text(text, x, y, r, g, b);
+	return 0;
+}
 
 int lua_get_screen_dimensions(lua_State *lua_instance) {
 	lua_pushnumber(lua_instance, gEngine->screen_width);
@@ -260,6 +289,64 @@ int lua_disable_resizing(lua_State *lua_instance) {
 int lua_enable_resizing(lua_State *lua_instance) {
 	SDL_SetWindowResizable(gEngine->window, SDL_TRUE); // ensure resizable is set.
 	
+	return 0;
+}
+
+int lua_set_fullscreen(lua_State *lua_instance) {
+	bool enabled = lua_toboolean(lua_instance, 1);
+	SDL_SetWindowFullscreen(gEngine->window, enabled ? SDL_TRUE : SDL_FALSE);
+}
+
+int lua_imgui_start_fixed_window(lua_State *lua_instance) {
+	const char *title = lua_tolstring(lua_instance, 1, NULL);
+	ImGuiWindowFlags window_flags = ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove;
+	ImGui::Begin(title, (bool *)false, window_flags);
+	return 0;
+}
+int lua_imgui_start_standard_window(lua_State *lua_instance) {
+	const char *title = lua_tolstring(lua_instance, 1, NULL);
+	ImGui::Begin(title, (bool *)false, 0);
+	return 0;
+}
+
+int lua_imgui_end(lua_State *lua_instance) {
+	ImGui::End();
+	return 0;
+}
+
+int lua_imgui_text(lua_State *lua_instance) {
+	const char *text = lua_tolstring(lua_instance, 1, NULL);
+	ImGui::Text(text);
+	return 0;
+}
+
+int lua_imgui_button(lua_State *lua_instance) {
+	const char *title = lua_tolstring(lua_instance, 1, NULL);
+	const char *callback = lua_tolstring(lua_instance, 2, NULL);
+	const int w = lua_tonumber(lua_instance, 3);
+	const int h = lua_tonumber(lua_instance, 4);
+	if (ImGui::Button(title, ImVec2(w,h))) {
+		luaL_dostring(gEngine->lua_instance, callback);
+	}
+	return 0;
+}
+
+int lua_imgui_window_size(lua_State *lua_instance) {
+	float w = lua_tonumber(lua_instance, 1);
+	float h = lua_tonumber(lua_instance, 2);
+	ImGui::SetWindowSize(ImVec2(w,h));
+	return 0;
+}
+int lua_imgui_window_pos(lua_State *lua_instance) {
+	float x = lua_tonumber(lua_instance, 1);
+	float y = lua_tonumber(lua_instance, 2);
+	ImGui::SetWindowPos(ImVec2(x,y));
+	return 0;
+}
+int lua_imgui_cursor_pos(lua_State *lua_instance) {
+	float x = lua_tonumber(lua_instance, 1);
+	float y = lua_tonumber(lua_instance, 2);
+	ImGui::SetCursorPos(ImVec2(x,y));
 	return 0;
 }
 
@@ -415,6 +502,7 @@ int engine::initialize() {
 	}
 	
 	if (this->initialized) {
+		this->state_manager = new state_machine();
 		this->lua_instance = luaL_newstate();
 		
 		luaL_openlibs(this->lua_instance);
@@ -424,6 +512,7 @@ int engine::initialize() {
 		lua_register(this->lua_instance, "create_subtexture", lua_create_sub_texture);
 		lua_register(this->lua_instance, "disable_screen_resize", lua_disable_resizing);
 		lua_register(this->lua_instance, "enable_screen_resize", lua_enable_resizing);
+		lua_register(this->lua_instance, "set_fullscreen", lua_set_fullscreen);
 		lua_register(this->lua_instance, "load_texture", lua_load_texture);
 		lua_register(this->lua_instance, "load_font", lua_load_font);
 		lua_register(this->lua_instance, "render_texture", lua_render_texture);
@@ -444,19 +533,48 @@ int engine::initialize() {
 		lua_register(this->lua_instance, "get_key_released", lua_get_key_released);
 		lua_register(this->lua_instance, "hide_cursor", lua_disable_cursor);
 		lua_register(this->lua_instance, "show_cursor", lua_enable_cursor);
+		lua_register(this->lua_instance, "register_state", lua_register_state);
+		lua_register(this->lua_instance, "set_state", lua_set_state);
+		lua_register(this->lua_instance, "IMGui_start_fixed_window", lua_imgui_start_fixed_window);
+		lua_register(this->lua_instance, "IMGui_start_standard_window", lua_imgui_start_standard_window);
+		lua_register(this->lua_instance, "IMGui_end", lua_imgui_end);
+		lua_register(this->lua_instance, "IMGui_text", lua_imgui_text);
+		lua_register(this->lua_instance, "IMGui_button", lua_imgui_button);
+		lua_register(this->lua_instance, "IMGui_window_size", lua_imgui_window_size);
+		lua_register(this->lua_instance, "IMGui_window_pos", lua_imgui_window_pos);
+		lua_register(this->lua_instance, "IMGui_cursor_pos", lua_imgui_cursor_pos);
+
+
 		
+		if (file_exists("./logo.png")) {
+		} else {
+			std::ofstream ofile = std::ofstream("./logo.png", std::ios::binary);
+			ofile.write((const char*)vglogo, sizeof(vglogo));
+			ofile.close();
+		}
 		
 		if (file_exists("./pre_init.lua")) {
 			luaL_dofile(this->lua_instance, "./pre_init.lua");
-			#ifndef __EMSCRIPTEN__
-				this->lua_thread = lua_newthread(this->lua_instance);
-			#endif
 			fflush(stdout);
 		} else {
-			printf("engine.cpp: No pre_init.lua found.\n");
+			printf("engine.cpp: No pre_init.lua found. Creating file.\n");
+			std::ofstream ofile = std::ofstream("./pre_init.lua", std::ios::out | std::ios::trunc);
+			ofile << "screen_width, screen_height = get_screen_dimensions()\n" << 
+				"disable_screen_resize()\n\nload_texture('logo', './logo.png')\n\n" <<
+				"function pre_init_load()\n\t\nend\n" <<
+				"function pre_init_unload()\n\t\nend\n" <<
+				"function pre_init_update()\n\t\nend\n" <<
+				"function pre_init_render()\n" <<
+				"\trender_texture(\"logo\", screen_width/2, screen_height/2, 256, 256, true, 0)\n" <<
+				"end\n\nregister_state('none', 'pre_init')\n\nset_state('pre_init')";
+			ofile.close();
+			luaL_dofile(this->lua_instance, "./pre_init.lua");
 			fflush(stdout);
-			this->initialized = false;
 		}
+	
+		#ifndef __EMSCRIPTEN__
+			this->lua_thread = lua_newthread(this->lua_instance);
+		#endif
 	}
 	
 	if (this->initialized) {
@@ -477,6 +595,21 @@ int engine::initialize() {
 		this->input_mutex = SDL_CreateMutex();
 		this->can_update_input = SDL_CreateCondition();
 		this->can_process_input = SDL_CreateCondition();
+		
+		IMGUI_CHECKVERSION();
+		ImGui::CreateContext();
+		this->UIIo = ImGui::GetIO(); (void)this->UIIo;
+		this->UIIo.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+		this->UIIo.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+
+		// Setup Dear ImGui style
+		ImGui::StyleColorsDark();
+		//ImGui::StyleColorsLight();
+
+		// Setup Platform/Renderer backends
+		ImGui_ImplSDL3_InitForSDLRenderer(this->window, this->renderer);
+		ImGui_ImplSDLRenderer3_Init(this->renderer);
+		
 		printf("engine.cpp: engine::initialize() success.\n");
 		fflush(stdout);
 		return 0;
@@ -497,7 +630,7 @@ void engine::stop() {
 int engine::cleanup() {
 	// Clean up the engine itself.
 	
-	
+	SDL_DestroyRenderer(this->renderer);
 	SDL_Quit(); // Quit SDL2
 	printf("engine.cpp: engine cleaned up.\n");
 	fflush(stdout);
@@ -518,12 +651,14 @@ int engine::render_function() {
 		SDL_SetRenderDrawColor(this->renderer, 0,  0, 0, 255); // set the draw color to white
 		SDL_RenderClear(this->renderer); // clear the screen
 		
-		
-		lua_getglobal(this->lua_instance, "render");
-		lua_call(this->lua_instance, 0, 0);
+		ImGui_ImplSDLRenderer3_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+		this->state_manager->render();
+        ImGui::Render();
 		// render the things here
 		// ..
-		
+		ImGui_ImplSDLRenderer3_RenderDrawData(ImGui::GetDrawData(), this->renderer);
 		SDL_RenderPresent(this->renderer); // present the display
 		this->last_render = SDL_GetTicks(); // update the last render time.
 	}
@@ -545,7 +680,9 @@ int engine::handle_events() {
 	}
 	// process SDL events.
 	SDL_Event e;
+	
 	while( SDL_PollEvent( &e ) ){
+		ImGui_ImplSDL3_ProcessEvent(&e);
 		if( e.type == SDL_EVENT_QUIT ) {
 			this->stop();
 		} else if (e.type == SDL_EVENT_WINDOW_RESIZED) {
@@ -568,8 +705,11 @@ int engine::handle_events() {
 				this->mouse_states.released[e.button.button-1] = true;
 				this->mouse_states.down[e.button.button-1] = false;
 			}
+		} else {
+		
 		}
 	}
+	
 	if (this->update_input) {
 		SDL_SignalCondition(this->can_process_input);
 		this->input_handled = false;
@@ -594,8 +734,7 @@ int engine::update_function() {
 		lua_call(this->lua_instance, 0, 0);
 		#endif
 		#ifndef __EMSCRIPTEN__
-		lua_getglobal(this->lua_thread, "update");
-		lua_call(this->lua_thread, 0, 0);
+		this->state_manager->update();
 		#endif
 		this->last_update = SDL_GetTicks();
 		this->update_input = true;
@@ -963,5 +1102,98 @@ int font::render_at(const char *text, int x, int y, int r, int g, int b, bool ce
 	return 0;
 }
 
-/// end classes
+/// state machines
+void State::render() {
+	this->_internal_render();
+}
+void State::update() {
+	this->_internal_update();
+}
+void State::_internal_render() {
+}
+void State::_internal_unload() {
+}
+void State::_internal_load() {
+}
+void State::unload() {
+	this->_internal_unload();
+}
+void State::load() {
+	this->_internal_load();
+}
+void State::_internal_update() {
+}
+LuaState::LuaState(std::string lua_source, std::string state_prefix) {
+	this->lua_source = lua_source;
+	this->state_prefix = state_prefix;
+	if (this->lua_source != "none") {
+		luaL_dofile(gEngine->lua_instance,lua_source.c_str());
+	}
+}
+void LuaState::_internal_unload() {
+	lua_getglobal(gEngine->lua_instance, (state_prefix+std::string("_unload")).c_str());
+	lua_call(gEngine->lua_instance, 0, 0);
+	
+}
+void LuaState::_internal_load() {
+	lua_getglobal(gEngine->lua_instance, (state_prefix+std::string("_load")).c_str());
+	lua_call(gEngine->lua_instance, 0, 0);
+	
+}
+void LuaState::_internal_render() {
+	lua_getglobal(gEngine->lua_instance, (state_prefix+std::string("_render")).c_str());
+	lua_call(gEngine->lua_instance, 0, 0);
+}
+void LuaState::_internal_update() {
+	lua_getglobal(gEngine->lua_thread, (state_prefix+std::string("_update")).c_str());
+	lua_call(gEngine->lua_thread, 0, 0);
+}
 
+state_machine::state_machine() {
+	this->current_state = NULL;
+	for (int i = 0; i < MAX_AVAILABLE_STATES; i++) {
+		this->states[i] = NULL;
+	}
+}
+
+void state_machine::update() {
+	this->current_state->update();
+}
+
+void state_machine::render() {
+	this->current_state->render();
+}
+
+void state_machine::set_current_state(std::string id) {
+	for (int i = 0; i < MAX_AVAILABLE_STATES; i++) {
+		if (this->states[i] != NULL) {
+			if (this->states[i]->state_prefix == id) {
+				if (this->current_state != NULL) {
+					this->current_state->unload();
+				}
+				this->current_state = this->states[i];
+				this->current_state->load();
+				return;
+			}
+		}
+	}
+}
+
+void state_machine::register_state(std::string file, std::string name) {
+	for (int i = 0; i < MAX_AVAILABLE_STATES; i++) {
+		if (this->states[i] != NULL) {
+			if (this->states[i]->state_prefix == name) {
+				return;
+			}
+		}
+	}
+	for (int i = 0; i < MAX_AVAILABLE_STATES; i++) {
+		if (this->states[i] == NULL) {
+			this->states[i] = new LuaState(file, name);
+			fflush(stdout);
+			return;
+		}
+	}
+}
+
+/// end classes

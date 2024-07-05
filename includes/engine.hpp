@@ -10,6 +10,10 @@
 #include <SDL3/SDL_ttf.h>
 #include <SDL3/SDL_mixer.h>
 
+#include "imgui.h"
+#include "imgui_impl_sdl3.h"
+#include "imgui_impl_sdlrenderer3.h"
+
 #include <LUA/lua.hpp>
 
 #define TARGET_FPS 60 // How many frames per second are *desired*.
@@ -18,7 +22,50 @@
 #define MAX_TEXTURES 1024
 #define MAX_SUBTEXTURES 4096
 #define MAX_FONTS 32
+#define MAX_AVAILABLE_STATES 256
+class State {
+	public:
+		std::string state_prefix;
+		State() {};
+		void render();
+		void unload();
+		void load();
+		void update();
+	private:
+		virtual void _internal_render();
+		virtual void _internal_unload();
+		virtual void _internal_load();
+		virtual void _internal_update();
+};
 
+class LuaState : public State {
+	public:
+		std::string lua_source;
+		LuaState(std::string, std::string);
+		LuaState() {} ;
+	private:
+		void _internal_render();
+		void _internal_unload();
+		void _internal_load();
+		void _internal_update();
+};
+class state_machine {
+public:
+    state_machine();
+    ~state_machine();
+
+    void render();
+    void update();
+
+	void set_current_state(std::string state_id);
+	
+	std::string statename;
+	
+	State *states[MAX_AVAILABLE_STATES];
+	State *current_state= NULL;
+
+	void register_state(std::string file, std::string name);
+};
 
 class texture {
 public:
@@ -92,6 +139,7 @@ public:
 	texture *Textures[MAX_TEXTURES];
 	subtexture *Subtextures[MAX_SUBTEXTURES];
 	font *Fonts[MAX_FONTS];
+
 	SDL_Window *window = NULL;
 	lua_State *lua_instance = NULL;
 	lua_State *lua_thread = NULL;
@@ -99,6 +147,10 @@ public:
 	SDL_Mutex *input_mutex = NULL;
 	SDL_Condition *can_update_input = NULL;
 	SDL_Condition *can_process_input = NULL;
+	state_machine *state_manager = NULL;
+	
+	ImGuiIO UIIo; 
+	
 	struct keyboard key_states;
 	struct mouse mouse_states;
 	Uint32 current_tick = 0; // the time since the engine began in ms
